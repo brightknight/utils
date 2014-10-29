@@ -6,13 +6,14 @@
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
+#include <inttypes.h>
 
 
-typedef unsigned char BYTE;
-typedef unsigned short WORD;
-typedef unsigned int DWORD;
-typedef long LONG;
-
+typedef uint8_t BYTE;
+typedef uint16_t WORD;
+typedef uint32_t DWORD;
+typedef int32_t LONG;
 
 typedef struct tagBITMAPFILEHEADER {
     WORD  bfType;
@@ -37,11 +38,21 @@ typedef struct tagBITMAPINFOHEADER {
 }__attribute__((packed)) BITMAPINFOHEADER, *PBITMAPINFOHEADER;
 
 
+void dumphex(uint8_t *p, int len)
+{
+    printf("-----dump: %p---------\n", p);
+    for (int i=0; i<len; i++) {
+        if (i > 0 && (i % 8 == 0))
+            printf("\n");
+        printf("%02x ", *(p + i));
+    }
+    printf("\n-----------------\n", p);
+}
 
 int main(int argc, char *argv[])
 {  
     int data_size;
-    unsigned char *img_buf, *img_buf_in;
+    uint8_t *img_buf, *img_buf_in;
     BITMAPFILEHEADER file_head;
     BITMAPINFOHEADER info_head;
 
@@ -65,7 +76,10 @@ int main(int argc, char *argv[])
     read(in, &file_head_in, sizeof(file_head_in));
     read(in, &info_head_in, sizeof(info_head_in));
 
-    printf("in %ld x %ld x %d\n", info_head_in.biWidth, info_head_in.biHeight, info_head_in.biBitCount);
+    dumphex((uint8_t *)&info_head_in,  sizeof(info_head_in));
+
+
+    printf("in %d x %d x %d\n", info_head_in.biWidth, info_head_in.biHeight, info_head_in.biBitCount);
 
     data_size = 4 * info_head_in.biHeight * info_head_in.biWidth;
     /*initialize bmp structs*/
@@ -86,7 +100,10 @@ int main(int argc, char *argv[])
     info_head.biClrUsed = 0;
     info_head.biClrImportant = 0;
 
-    int bpl_in = info_head_in.biWidth * 3 + (4 - info_head_in.biWidth * 3 % 4);
+    int bpl_in = info_head_in.biWidth * 3;
+    if (bpl_in % 4) {
+       bpl_in += 4 - bpl_in % 4;
+    }
     img_buf_in = (unsigned char *)malloc(info_head_in.biHeight * bpl_in);
     img_buf = (unsigned char *)malloc(data_size);
     if (img_buf_in == NULL || img_buf == NULL)
@@ -96,13 +113,13 @@ int main(int argc, char *argv[])
     }
 
     /*read img data and */
-    int len = read(in, img_buf_in, data_size);
-    printf("read %d / %d bytes\n", len, data_size);
+    int len = read(in, img_buf_in, info_head_in.biHeight * bpl_in);
+    printf("read %d / %d bytes\n", len, info_head_in.biHeight * bpl_in);
 
     /* convert 24 to 32 bpp */
     for (int i = 0; i < info_head.biHeight; i++) {
         for (int j = 0; j < info_head.biWidth; j++) {
-            int *pout = (int *)img_buf + i * info_head.biWidth + j;
+            int32_t *pout = (int32_t *)img_buf + i * info_head.biWidth + j;
             unsigned char *pin = img_buf_in + i * bpl_in + j * 3;
             *pout = *(pin + 2) << 16
                 | *(pin + 1) << 8 
